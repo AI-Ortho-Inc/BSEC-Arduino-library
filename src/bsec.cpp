@@ -38,8 +38,10 @@
 
 #include "bsec.h"
 
-TwoWire* Bsec::wireObj = NULL;
-SPIClass* Bsec::spiObj = NULL;
+#include <cstring>  // for memcpy
+
+// TwoWire *Bsec::wireObj = NULL;
+// SPIClass *Bsec::spiObj = NULL;
 
 /**
  * @brief Constructor
@@ -65,17 +67,14 @@ Bsec::Bsec()
 /**
  * @brief Function to initialize the BSEC library and the BME680 sensor
  */
-void Bsec::begin(uint8_t devId,
-                 enum bme680_intf intf,
-                 bme680_com_fptr_t read,
-                 bme680_com_fptr_t write,
+void Bsec::begin(uint8_t devId, enum bme680_intf intf, bme680_com_fptr_t read, bme680_com_fptr_t write,
                  bme680_delay_fptr_t idleTask)
 {
     _bme680.dev_id = devId;
     _bme680.intf = intf;
     _bme680.read = read;
     _bme680.write = write;
-    _bme680.delay_ms = idleTask;
+    _bme680.delay_ms = delay_ms;
     _bme680.amb_temp = 25;
     _bme680.power_mode = BME680_FORCED_MODE;
 
@@ -85,17 +84,18 @@ void Bsec::begin(uint8_t devId,
 /**
  * @brief Function to initialize the BSEC library and the BME680 sensor
  */
-void Bsec::begin(uint8_t i2cAddr, TwoWire &i2c, bme680_delay_fptr_t idleTask)
+void Bsec::begin(uint8_t i2cAddr, bme680_delay_fptr_t idleTask)
 {
     _bme680.dev_id = i2cAddr;
     _bme680.intf = BME680_I2C_INTF;
     _bme680.read = Bsec::i2cRead;
     _bme680.write = Bsec::i2cWrite;
-    _bme680.delay_ms = idleTask;
+    // _bme680.delay_ms = idleTask;
+    _bme680.delay_ms = this->delay_ms;
     _bme680.amb_temp = 25;
     _bme680.power_mode = BME680_FORCED_MODE;
 
-    Bsec::wireObj = &i2c;
+    // Bsec::wireObj = &i2c;
 
     beginCommon();
 }
@@ -103,22 +103,22 @@ void Bsec::begin(uint8_t i2cAddr, TwoWire &i2c, bme680_delay_fptr_t idleTask)
 /**
  * @brief Function to initialize the BSEC library and the BME680 sensor
  */
-void Bsec::begin(uint8_t chipSelect, SPIClass &spi, bme680_delay_fptr_t idleTask)
-{
-    _bme680.dev_id = chipSelect;
-    _bme680.intf = BME680_SPI_INTF;
-    _bme680.read = Bsec::spiTransfer;
-    _bme680.write = Bsec::spiTransfer;
-    _bme680.delay_ms = idleTask;
-    _bme680.amb_temp = 25;
-    _bme680.power_mode = BME680_FORCED_MODE;
+// void Bsec::begin(uint8_t chipSelect, SPIClass &spi, bme680_delay_fptr_t idleTask)
+// {
+//     _bme680.dev_id = chipSelect;
+//     _bme680.intf = BME680_SPI_INTF;
+//     _bme680.read = Bsec::spiTransfer;
+//     _bme680.write = Bsec::spiTransfer;
+//     _bme680.delay_ms = idleTask;
+//     _bme680.amb_temp = 25;
+//     _bme680.power_mode = BME680_FORCED_MODE;
 
-    pinMode(chipSelect, OUTPUT);
-    digitalWrite(chipSelect, HIGH);
-    Bsec::spiObj = &spi;
+//     pinMode(chipSelect, OUTPUT);
+//     digitalWrite(chipSelect, HIGH);
+//     Bsec::spiObj = &spi;
 
-    beginCommon();
-}
+//     beginCommon();
+// }
 
 /**
  * @brief Common code for the begin function
@@ -244,11 +244,7 @@ bool Bsec::run(int64_t timeMilliseconds)
 
         uint8_t workBuffer[BSEC_MAX_STATE_BLOB_SIZE];
         uint32_t n_serialized_state = BSEC_MAX_STATE_BLOB_SIZE;
-        status = bsec_get_state(0,
-                                bsecState,
-                                BSEC_MAX_STATE_BLOB_SIZE,
-                                workBuffer,
-                                BSEC_MAX_STATE_BLOB_SIZE,
+        status = bsec_get_state(0, bsecState, BSEC_MAX_STATE_BLOB_SIZE, workBuffer, BSEC_MAX_STATE_BLOB_SIZE,
                                 &n_serialized_state);
         validBsecState = true;
     }
@@ -266,11 +262,7 @@ void Bsec::getState(uint8_t *state)
 
     if (!validBsecState)
     {
-        status = bsec_get_state(0,
-                                bsecState,
-                                BSEC_MAX_STATE_BLOB_SIZE,
-                                workBuffer,
-                                BSEC_MAX_STATE_BLOB_SIZE,
+        status = bsec_get_state(0, bsecState, BSEC_MAX_STATE_BLOB_SIZE, workBuffer, BSEC_MAX_STATE_BLOB_SIZE,
                                 &n_serialized_state);
         validBsecState = true;
     }
@@ -313,10 +305,7 @@ void Bsec::setConfig(const uint8_t *config)
 /**
  * @brief Get the version of the BSEC library
  */
-void Bsec::getVersion(void)
-{
-    bsec_get_version(&version);
-}
+void Bsec::getVersion(void) { bsec_get_version(&version); }
 
 /**
  * @brief Read data from the BME680 and process it
@@ -399,56 +388,56 @@ bool Bsec::readProcessData(int64_t currTimeNs, bsec_bme_settings_t bme680Setting
             {
                 switch (_outputs[i].sensor_id)
                 {
-                    case BSEC_OUTPUT_IAQ:
-                        iaq = _outputs[i].signal;
-                        iaqAccuracy = _outputs[i].accuracy;
-                        break;
-                    case BSEC_OUTPUT_STATIC_IAQ:
-                        staticIaq = _outputs[i].signal;
-                        staticIaqAccuracy = _outputs[i].accuracy;
-                        break;
-                    case BSEC_OUTPUT_CO2_EQUIVALENT:
-                        co2Equivalent = _outputs[i].signal;
-                        co2Accuracy = _outputs[i].accuracy;
-                        break;
-                    case BSEC_OUTPUT_BREATH_VOC_EQUIVALENT:
-                        breathVocEquivalent = _outputs[i].signal;
-                        breathVocAccuracy = _outputs[i].accuracy;
-                        break;
-                    case BSEC_OUTPUT_RAW_TEMPERATURE:
-                        rawTemperature = _outputs[i].signal;
-                        break;
-                    case BSEC_OUTPUT_RAW_PRESSURE:
-                        pressure = _outputs[i].signal;
-                        break;
-                    case BSEC_OUTPUT_RAW_HUMIDITY:
-                        rawHumidity = _outputs[i].signal;
-                        break;
-                    case BSEC_OUTPUT_RAW_GAS:
-                        gasResistance = _outputs[i].signal;
-                        break;
-                    case BSEC_OUTPUT_STABILIZATION_STATUS:
-                        stabStatus = _outputs[i].signal;
-                        break;
-                    case BSEC_OUTPUT_RUN_IN_STATUS:
-                        runInStatus = _outputs[i].signal;
-                        break;
-                    case BSEC_OUTPUT_SENSOR_HEAT_COMPENSATED_TEMPERATURE:
-                        temperature = _outputs[i].signal;
-                        break;
-                    case BSEC_OUTPUT_SENSOR_HEAT_COMPENSATED_HUMIDITY:
-                        humidity = _outputs[i].signal;
-                        break;
-                    case BSEC_OUTPUT_COMPENSATED_GAS:
-                        compGasValue = _outputs[i].signal;
-                        compGasAccuracy = _outputs[i].accuracy;
-                        break;
-                    case BSEC_OUTPUT_GAS_PERCENTAGE:
-                        gasPercentage = _outputs[i].signal;
-                        gasPercentageAcccuracy = _outputs[i].accuracy;
-                        break;
-                    default:
-                        break;
+                case BSEC_OUTPUT_IAQ:
+                    iaq = _outputs[i].signal;
+                    iaqAccuracy = _outputs[i].accuracy;
+                    break;
+                case BSEC_OUTPUT_STATIC_IAQ:
+                    staticIaq = _outputs[i].signal;
+                    staticIaqAccuracy = _outputs[i].accuracy;
+                    break;
+                case BSEC_OUTPUT_CO2_EQUIVALENT:
+                    co2Equivalent = _outputs[i].signal;
+                    co2Accuracy = _outputs[i].accuracy;
+                    break;
+                case BSEC_OUTPUT_BREATH_VOC_EQUIVALENT:
+                    breathVocEquivalent = _outputs[i].signal;
+                    breathVocAccuracy = _outputs[i].accuracy;
+                    break;
+                case BSEC_OUTPUT_RAW_TEMPERATURE:
+                    rawTemperature = _outputs[i].signal;
+                    break;
+                case BSEC_OUTPUT_RAW_PRESSURE:
+                    pressure = _outputs[i].signal;
+                    break;
+                case BSEC_OUTPUT_RAW_HUMIDITY:
+                    rawHumidity = _outputs[i].signal;
+                    break;
+                case BSEC_OUTPUT_RAW_GAS:
+                    gasResistance = _outputs[i].signal;
+                    break;
+                case BSEC_OUTPUT_STABILIZATION_STATUS:
+                    stabStatus = _outputs[i].signal;
+                    break;
+                case BSEC_OUTPUT_RUN_IN_STATUS:
+                    runInStatus = _outputs[i].signal;
+                    break;
+                case BSEC_OUTPUT_SENSOR_HEAT_COMPENSATED_TEMPERATURE:
+                    temperature = _outputs[i].signal;
+                    break;
+                case BSEC_OUTPUT_SENSOR_HEAT_COMPENSATED_HUMIDITY:
+                    humidity = _outputs[i].signal;
+                    break;
+                case BSEC_OUTPUT_COMPENSATED_GAS:
+                    compGasValue = _outputs[i].signal;
+                    compGasAccuracy = _outputs[i].accuracy;
+                    break;
+                case BSEC_OUTPUT_GAS_PERCENTAGE:
+                    gasPercentage = _outputs[i].signal;
+                    gasPercentageAcccuracy = _outputs[i].accuracy;
+                    break;
+                default:
+                    break;
                 }
             }
 
@@ -470,8 +459,8 @@ int8_t Bsec::setBme680Config(bsec_bme_settings_t bme680Settings)
     _bme680.tph_sett.os_pres = bme680Settings.pressure_oversampling;
     _bme680.gas_sett.heatr_temp = bme680Settings.heater_temperature;
     _bme680.gas_sett.heatr_dur = bme680Settings.heating_duration;
-    uint16_t desired_settings = BME680_OST_SEL | BME680_OSP_SEL | BME680_OSH_SEL | BME680_FILTER_SEL |
-                                BME680_GAS_SENSOR_SEL;
+    uint16_t desired_settings =
+        BME680_OST_SEL | BME680_OSP_SEL | BME680_OSH_SEL | BME680_FILTER_SEL | BME680_GAS_SENSOR_SEL;
 
     return bme680_set_sensor_settings(desired_settings, &_bme680);
 }
@@ -504,12 +493,14 @@ void Bsec::zeroOutputs(void)
     validBsecState = false;
 }
 
+#include "freertos/timers.h"
+
 /**
  * @brief Function to calculate an int64_t timestamp in milliseconds
  */
 int64_t Bsec::getTimeMs(void)
 {
-    int64_t timeMs = millis();
+    int64_t timeMs = xTaskGetTickCount();
 
     if (lastTime > timeMs) /* An overflow occurred */
     {
@@ -530,7 +521,7 @@ void Bsec::delay_ms(uint32_t period)
      * Wait for a period amount of ms
      * The system may simply idle, sleep or even perform background tasks
      */
-    delay(period);
+    vTaskDelay(period / portTICK_PERIOD_MS);
 }
 
 /**
@@ -538,26 +529,27 @@ void Bsec::delay_ms(uint32_t period)
  */
 int8_t Bsec::i2cRead(uint8_t devId, uint8_t regAddr, uint8_t *regData, uint16_t length)
 {
-    uint16_t i;
-    int8_t rslt = 0;
+    return i2c_read(devId, regAddr, regData, length);
+    // uint16_t i;
+    // int8_t rslt = 0;
 
-    if (Bsec::wireObj)
-    {
-        Bsec::wireObj->beginTransmission(devId);
-        Bsec::wireObj->write(regAddr);
-        rslt = Bsec::wireObj->endTransmission();
-        Bsec::wireObj->requestFrom((int) devId, (int) length);
-        for (i = 0; (i < length) && Bsec::wireObj->available(); i++)
-        {
-            regData[i] = Bsec::wireObj->read();
-        }
-    }
-    else
-    {
-        rslt = -1;
-    }
+    // if (Bsec::wireObj)
+    // {
+    //     Bsec::wireObj->beginTransmission(devId);
+    //     Bsec::wireObj->write(regAddr);
+    //     rslt = Bsec::wireObj->endTransmission();
+    //     Bsec::wireObj->requestFrom((int) devId, (int) length);
+    //     for (i = 0; (i < length) && Bsec::wireObj->available(); i++)
+    //     {
+    //         regData[i] = Bsec::wireObj->read();
+    //     }
+    // }
+    // else
+    // {
+    //     rslt = -1;
+    // }
 
-    return rslt;
+    // return rslt;
 }
 
 /**
@@ -565,53 +557,54 @@ int8_t Bsec::i2cRead(uint8_t devId, uint8_t regAddr, uint8_t *regData, uint16_t 
  */
 int8_t Bsec::i2cWrite(uint8_t devId, uint8_t regAddr, uint8_t *regData, uint16_t length)
 {
-    uint16_t i;
-    int8_t rslt = 0;
+    return i2c_write(devId, regAddr, regData, length);
+    // uint16_t i;
+    // int8_t rslt = 0;
 
-    if (Bsec::wireObj)
-    {
-        Bsec::wireObj->beginTransmission(devId);
-        Bsec::wireObj->write(regAddr);
-        for (i = 0; i < length; i++)
-        {
-            Bsec::wireObj->write(regData[i]);
-        }
-        rslt = Bsec::wireObj->endTransmission();
-    }
-    else
-    {
-        rslt = -1;
-    }
+    // if (Bsec::wireObj)
+    // {
+    //     Bsec::wireObj->beginTransmission(devId);
+    //     Bsec::wireObj->write(regAddr);
+    //     for (i = 0; i < length; i++)
+    //     {
+    //         Bsec::wireObj->write(regData[i]);
+    //     }
+    //     rslt = Bsec::wireObj->endTransmission();
+    // }
+    // else
+    // {
+    //     rslt = -1;
+    // }
 
-    return rslt;
+    // return rslt;
 }
 
 /**
  * @brief Callback function for reading and writing registers over SPI
  */
-int8_t Bsec::spiTransfer(uint8_t devId, uint8_t regAddr, uint8_t *regData, uint16_t length)
-{
-    int8_t rslt = 0;
+// int8_t Bsec::spiTransfer(uint8_t devId, uint8_t regAddr, uint8_t *regData, uint16_t length)
+// {
+//     int8_t rslt = 0;
 
-    if (Bsec::spiObj)
-    {
-        Bsec::spiObj->beginTransaction(SPISettings(4000000, MSBFIRST, SPI_MODE0)); /* Can be up to 10MHz */
+//     if (Bsec::spiObj)
+//     {
+//         Bsec::spiObj->beginTransaction(SPISettings(4000000, MSBFIRST, SPI_MODE0)); /* Can be up to 10MHz */
 
-        digitalWrite(devId, LOW);
+//         digitalWrite(devId, LOW);
 
-        Bsec::spiObj->transfer(regAddr); /* Write the register address, ignore the return */
-        for (uint16_t i = 0; i < length; i++)
-        {
-            regData[i] = Bsec::spiObj->transfer(regData[i]);
-        }
+//         Bsec::spiObj->transfer(regAddr); /* Write the register address, ignore the return */
+//         for (uint16_t i = 0; i < length; i++)
+//         {
+//             regData[i] = Bsec::spiObj->transfer(regData[i]);
+//         }
 
-        digitalWrite(devId, HIGH);
-        Bsec::spiObj->endTransaction();
-    }
-    else
-    {
-        rslt = -1;
-    }
+//         digitalWrite(devId, HIGH);
+//         Bsec::spiObj->endTransaction();
+//     }
+//     else
+//     {
+//         rslt = -1;
+//     }
 
-    return rslt;
-}
+//     return rslt;
+// }
